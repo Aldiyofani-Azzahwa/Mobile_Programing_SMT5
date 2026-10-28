@@ -1,526 +1,488 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
-void main() => runApp(const MyApp());
-
-/// Palet warna gentle & modern
-class AppColors {
-  static const bg1 = Color(0xFFEAF0F7);
-  static const bg2 = Color(0xFFF7EFE9);
-  static const primary = Color(0xFF5B7DB1);
-  static const primarySoft = Color(0xFFE3EBF6);
-  static const sage = Color(0xFF7FA38B);
-  static const sageSoft = Color(0xFFE5F0E8);
-  static const textDark = Color(0xFF2D3748);
-  static const textGrey = Color(0xFF7A8699);
+void main() {
+  runApp(const MyApp());
 }
 
+// ============================================================================
+// 1. MODEL CLASS (Instruksi 1)
+// ============================================================================
+class UserModel {
+  final int id;
+  final String email;
+  final String firstName;
+  final String lastName;
+  final String avatar;
+
+  UserModel({
+    required this.id,
+    required this.email,
+    required this.firstName,
+    required this.lastName,
+    required this.avatar,
+  });
+
+  // Factory fromJson sesuai struktur JSON dari reqres.in
+  factory UserModel.fromJson(Map<String, dynamic> json) {
+    return UserModel(
+      id: json['id'] ?? 0,
+      email: json['email'] ?? '',
+      firstName: json['first_name'] ?? '',
+      lastName: json['last_name'] ?? '',
+      avatar: json['avatar'] ?? 'https://reqres.in/img/faces/1-image.jpg',
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'email': email,
+      'first_name': firstName,
+      'last_name': lastName,
+      'avatar': avatar,
+    };
+  }
+}
+
+// ============================================================================
+// 2. SERVICE CLASS & ERROR HANDLING (Instruksi 2 & 5)
+// ============================================================================
+class UserService {
+  static const String _baseUrl = 'https://reqres.in/api/users';
+
+  // READ - GET Daftar User
+  Future<List<UserModel>> getUsers() async {
+    try {
+      final response = await http.get(Uri.parse('$_baseUrl?page=1'));
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> jsonResponse = json.decode(response.body);
+        final List<dynamic> data = jsonResponse['data'];
+        return data.map((userJson) => UserModel.fromJson(userJson)).toList();
+      } else {
+        throw Exception(
+          'Gagal memuat data user (Status Code: ${response.statusCode})',
+        );
+      }
+    } on SocketException {
+      throw Exception(
+        'Tidak ada koneksi internet. Periksa jaringan Wi-Fi atau Data Anda.',
+      );
+    } catch (e) {
+      throw Exception('Terjadi kesalahan: $e');
+    }
+  }
+
+  // CREATE - POST Buat User Baru
+  Future<Map<String, dynamic>> createUser({
+    required String name,
+    required String job,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse(_baseUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'name': name, 'job': job}),
+      );
+
+      if (response.statusCode == 201) {
+        return json.decode(response.body);
+      } else {
+        throw Exception(
+          'Gagal membuat user (Status Code: ${response.statusCode})',
+        );
+      }
+    } on SocketException {
+      throw Exception(
+        'Tidak ada koneksi internet. Gagal mengirim data ke server.',
+      );
+    } catch (e) {
+      throw Exception('Terjadi kesalahan saat membuat user: $e');
+    }
+  }
+
+  // UPDATE - PUT Perbarui Data User
+  Future<Map<String, dynamic>> updateUser({
+    required int id,
+    required String name,
+    required String job,
+  }) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$_baseUrl/$id'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'name': name, 'job': job}),
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception(
+          'Gagal memperbarui user (Status Code: ${response.statusCode})',
+        );
+      }
+    } on SocketException {
+      throw Exception(
+        'Tidak ada koneksi internet. Gagal memperbarui data.',
+      );
+    } catch (e) {
+      throw Exception('Terjadi kesalahan saat update user: $e');
+    }
+  }
+
+  // DELETE - Hapus Data User
+  Future<bool> deleteUser(int id) async {
+    try {
+      final response = await http.delete(Uri.parse('$_baseUrl/$id'));
+
+      // reqres.in mengembalikan 204 (No Content) untuk DELETE, kita tangani juga 200/201
+      if (response.statusCode == 204 ||
+          response.statusCode == 200 ||
+          response.statusCode == 201) {
+        return true;
+      } else {
+        throw Exception(
+          'Gagal menghapus user (Status Code: ${response.statusCode})',
+        );
+      }
+    } on SocketException {
+      throw Exception(
+        'Tidak ada koneksi internet. Gagal menghapus user.',
+      );
+    } catch (e) {
+      throw Exception('Terjadi kesalahan saat menghapus user: $e');
+    }
+  }
+}
+
+// ============================================================================
+// 3. UI, FUTUREBUILDER, & FORM CRUD (Instruksi 3 & 4)
+// ============================================================================
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      title: 'Praktikum CRUD REST API',
       debugShowCheckedModeBanner: false,
-      title: 'Kartu Profil',
       theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
         useMaterial3: true,
-        colorSchemeSeed: AppColors.primary,
       ),
-      home: const ProfileCardPage(),
+      home: const UserListScreen(),
     );
   }
 }
 
-class ProfileCardPage extends StatelessWidget {
-  const ProfileCardPage({super.key});
+class UserListScreen extends StatefulWidget {
+  const UserListScreen({super.key});
 
-  static const String nama = 'Aldiyofani Az-Zahwa';
-  static const String prodi = 'Mahasiswa Sistem Informasi';
-  static const String nim = '4124025';
-  static const String asal = 'Mancar';
-  static const String deskripsi =
-      'Mahasiswa Sistem Informasi yang antusias belajar pemrograman mobile '
-      'dan pengembangan aplikasi. Aktif berorganisasi, suka berkolaborasi, '
-      'dan senang membangun hal yang bermanfaat.';
-  static const List<String> skills = [
-    'Flutter',
-    'Dart',
-    'UI Design',
-    'Problem Solving',
-    'Teamwork',
-  ];
+  @override
+  State<UserListScreen> createState() => _UserListScreenState();
+}
+
+class _UserListScreenState extends State<UserListScreen> {
+  final UserService _userService = UserService();
+  late Future<List<UserModel>> _futureUsers;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUsers();
+  }
+
+  void _loadUsers() {
+    setState(() {
+      _futureUsers = _userService.getUsers();
+    });
+  }
+
+  // Fungsi menampilkan SnackBar konfirmasi sukses atau error
+  void _showSnackBar(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red.shade700 : Colors.green.shade700,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  // Dialog Form untuk Create User Baru (POST) & Edit User (PUT)
+  void _showUserFormDialog({UserModel? user}) {
+    final bool isEdit = user != null;
+    final TextEditingController nameController = TextEditingController(
+      text: isEdit ? '${user.firstName} ${user.lastName}' : '',
+    );
+    final TextEditingController jobController = TextEditingController();
+    final GlobalKey<FormState> formKey = GlobalKey<FormState>();
+    bool isSubmitting = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Text(isEdit ? 'Edit User (PUT)' : 'Tambah User Baru (POST)'),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Nama Lengkap',
+                        hintText: 'Contoh: Budi Santoso',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (value) =>
+                          (value == null || value.trim().isEmpty)
+                              ? 'Nama tidak boleh kosong'
+                              : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: jobController,
+                      decoration: const InputDecoration(
+                        labelText: 'Pekerjaan (Job)',
+                        hintText: 'Contoh: Mobile Developer',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (value) =>
+                          (value == null || value.trim().isEmpty)
+                              ? 'Pekerjaan tidak boleh kosong'
+                              : null,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSubmitting ? null : () => Navigator.pop(context),
+                  child: const Text('Batal'),
+                ),
+                ElevatedButton(
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          if (!formKey.currentState!.validate()) return;
+
+                          setDialogState(() => isSubmitting = true);
+
+                          try {
+                            if (isEdit) {
+                              final result = await _userService.updateUser(
+                                id: user.id,
+                                name: nameController.text.trim(),
+                                job: jobController.text.trim(),
+                              );
+                              if (!context.mounted) return;
+                              Navigator.pop(context);
+                              _showSnackBar(
+                                'Sukses Update (PUT): ${result['name']} - ${result['job']}',
+                              );
+                            } else {
+                              final result = await _userService.createUser(
+                                name: nameController.text.trim(),
+                                job: jobController.text.trim(),
+                              );
+                              if (!context.mounted) return;
+                              Navigator.pop(context);
+                              _showSnackBar(
+                                'Sukses Create (POST)! ID: ${result['id']}, Nama: ${result['name']}',
+                              );
+                            }
+                          } catch (e) {
+                            if (!context.mounted) return;
+                            Navigator.pop(context);
+                            _showSnackBar(
+                              e.toString().replaceAll('Exception: ', ''),
+                              isError: true,
+                            );
+                          }
+                        },
+                  child: isSubmitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(isEdit ? 'Update' : 'Simpan'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // Dialog Konfirmasi Hapus User (DELETE)
+  Future<void> _confirmDelete(UserModel user) async {
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Hapus User (DELETE)'),
+        content: Text(
+          'Apakah Anda yakin ingin menghapus ${user.firstName} ${user.lastName}?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Hapus', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await _userService.deleteUser(user.id);
+        _showSnackBar(
+          'Sukses Delete (DELETE): User ${user.firstName} (ID: ${user.id}) berhasil dihapus.',
+        );
+      } catch (e) {
+        _showSnackBar(
+          e.toString().replaceAll('Exception: ', ''),
+          isError: true,
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [AppColors.bg1, AppColors.bg2],
-          ),
-        ),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 900),
-                child: const ProfileCard(),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class ProfileCard extends StatelessWidget {
-  const ProfileCard({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(28),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(32),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.12),
-            blurRadius: 40,
-            offset: const Offset(0, 16),
+      appBar: AppBar(
+        title: const Text('Daftar User (Reqres API)'),
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Muat Ulang Data',
+            onPressed: _loadUsers,
           ),
         ],
       ),
-      // Responsif: > 600 = Row (berdampingan), <= 600 = Column (bertumpuk)
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final bool isWide = MediaQuery.of(context).size.width > 600;
-
-          if (isWide) {
-            return const Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                ProfilePhoto(size: 170),
-                SizedBox(width: 36),
-                Expanded(child: ProfileInfo(centered: false)),
-              ],
+      body: FutureBuilder<List<UserModel>>(
+        future: _futureUsers,
+        builder: (context, snapshot) {
+          // Indikator Loading
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 12),
+                  Text('Mengambil data dari server...'),
+                ],
+              ),
             );
           }
-          return const Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ProfilePhoto(size: 150),
-              SizedBox(height: 24),
-              ProfileInfo(centered: true),
-            ],
+
+          // Pesan Error Jelas (Termasuk saat tidak ada internet)
+          if (snapshot.hasError) {
+            final errorMsg =
+                snapshot.error.toString().replaceAll('Exception: ', '');
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.wifi_off, size: 64, color: Colors.red),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Gagal Memuat Data',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      errorMsg,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.black87),
+                    ),
+                    const SizedBox(height: 20),
+                    ElevatedButton.icon(
+                      onPressed: _loadUsers,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Coba Lagi'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          // State Kosong
+          final users = snapshot.data ?? [];
+          if (users.isEmpty) {
+            return const Center(child: Text('Tidak ada data user.'));
+          }
+
+          // Daftar User (GET)
+          return ListView.separated(
+            padding: const EdgeInsets.all(12),
+            itemCount: users.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              final user = users[index];
+              return Card(
+                elevation: 2,
+                child: ListTile(
+                  leading: CircleAvatar(
+                    radius: 26,
+                    backgroundImage: NetworkImage(user.avatar),
+                  ),
+                  title: Text(
+                    '${user.firstName} ${user.lastName}',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text('${user.email}\nID: ${user.id}'),
+                  isThreeLine: true,
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit, color: Colors.blue),
+                        tooltip: 'Update User (PUT)',
+                        onPressed: () => _showUserFormDialog(user: user),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red),
+                        tooltip: 'Delete User (DELETE)',
+                        onPressed: () => _confirmDelete(user),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
           );
         },
       ),
-    );
-  }
-}
-
-/// Avatar cowok + badge "Available" memakai Stack & Positioned
-class ProfilePhoto extends StatelessWidget {
-  final double size;
-  const ProfilePhoto({super.key, required this.size});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: size + 16,
-      height: size + 16,
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(5),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white,
-              border: Border.all(color: AppColors.primarySoft, width: 4),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.18),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: MaleAvatar(size: size - 18),
-          ),
-          Positioned(
-            bottom: 8,
-            right: 0,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppColors.sage,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white, width: 2.5),
-                boxShadow: const [
-                  BoxShadow(color: Colors.black12, blurRadius: 6),
-                ],
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.circle, size: 8, color: Colors.white),
-                  SizedBox(width: 6),
-                  Text(
-                    'Available',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showUserFormDialog(),
+        icon: const Icon(Icons.person_add),
+        label: const Text('Tambah User'),
       ),
-    );
-  }
-}
-
-/// Avatar cowok digambar dengan CustomPaint (tanpa file gambar)
-class MaleAvatar extends StatelessWidget {
-  final double size;
-  const MaleAvatar({super.key, required this.size});
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipOval(
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: CustomPaint(painter: _MaleAvatarPainter()),
-      ),
-    );
-  }
-}
-
-class _MaleAvatarPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size s) {
-    final w = s.width;
-    final fill = Paint()..style = PaintingStyle.fill;
-
-    // Latar
-    fill.shader = const LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [Color(0xFFDCE8F5), Color(0xFFF1E9F5)],
-    ).createShader(Rect.fromLTWH(0, 0, w, w));
-    canvas.drawRect(Rect.fromLTWH(0, 0, w, w), fill);
-    fill.shader = null;
-
-    // Badan / kemeja
-    fill.color = const Color(0xFF6F8FBF);
-    canvas.drawOval(
-      Rect.fromCenter(
-          center: Offset(w * 0.5, w * 1.02),
-          width: w * 0.80,
-          height: w * 0.62),
-      fill,
-    );
-
-    // Leher
-    fill.color = const Color(0xFFE0AE86);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(
-            center: Offset(w * 0.5, w * 0.68),
-            width: w * 0.15,
-            height: w * 0.16),
-        Radius.circular(w * 0.04),
-      ),
-      fill,
-    );
-
-    // Kerah putih
-    fill.color = Colors.white;
-    final collar = Path()
-      ..moveTo(w * 0.42, w * 0.73)
-      ..lineTo(w * 0.5, w * 0.83)
-      ..lineTo(w * 0.58, w * 0.73)
-      ..lineTo(w * 0.54, w * 0.72)
-      ..lineTo(w * 0.5, w * 0.77)
-      ..lineTo(w * 0.46, w * 0.72)
-      ..close();
-    canvas.drawPath(collar, fill);
-
-    // Telinga
-    fill.color = const Color(0xFFEBBB94);
-    canvas.drawCircle(Offset(w * 0.325, w * 0.48), w * 0.035, fill);
-    canvas.drawCircle(Offset(w * 0.675, w * 0.48), w * 0.035, fill);
-
-    // Wajah
-    fill.color = const Color(0xFFF3C9A5);
-    canvas.drawOval(
-      Rect.fromCenter(
-          center: Offset(w * 0.5, w * 0.47),
-          width: w * 0.35,
-          height: w * 0.42),
-      fill,
-    );
-
-    // Rambut
-    fill.color = const Color(0xFF2F2F3D);
-    final hair = Path()
-      ..moveTo(w * 0.32, w * 0.46)
-      ..quadraticBezierTo(w * 0.28, w * 0.16, w * 0.5, w * 0.15)
-      ..quadraticBezierTo(w * 0.72, w * 0.16, w * 0.68, w * 0.46)
-      ..quadraticBezierTo(w * 0.65, w * 0.34, w * 0.56, w * 0.31)
-      ..quadraticBezierTo(w * 0.46, w * 0.35, w * 0.37, w * 0.31)
-      ..quadraticBezierTo(w * 0.33, w * 0.36, w * 0.32, w * 0.46)
-      ..close();
-    canvas.drawPath(hair, fill);
-
-    // Alis
-    final brow = Paint()
-      ..color = const Color(0xFF2F2F3D)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.013
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(
-        Offset(w * 0.40, w * 0.425), Offset(w * 0.46, w * 0.42), brow);
-    canvas.drawLine(
-        Offset(w * 0.54, w * 0.42), Offset(w * 0.60, w * 0.425), brow);
-
-    // Mata
-    fill.color = const Color(0xFF2F2F3D);
-    canvas.drawCircle(Offset(w * 0.43, w * 0.47), w * 0.017, fill);
-    canvas.drawCircle(Offset(w * 0.57, w * 0.47), w * 0.017, fill);
-
-    // Hidung
-    final nose = Paint()
-      ..color = const Color(0xFFD9A57F)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.01
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(
-        Offset(w * 0.5, w * 0.48), Offset(w * 0.49, w * 0.52), nose);
-
-    // Senyum
-    final smile = Paint()
-      ..color = const Color(0xFFB5654A)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.014
-      ..strokeCap = StrokeCap.round;
-    final mouth = Path()
-      ..moveTo(w * 0.44, w * 0.57)
-      ..quadraticBezierTo(w * 0.5, w * 0.62, w * 0.56, w * 0.57);
-    canvas.drawPath(mouth, smile);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-/// Nama, prodi, deskripsi, organisasi, kontak (Row), dan skill (Wrap + Chip)
-class ProfileInfo extends StatelessWidget {
-  final bool centered;
-  const ProfileInfo({super.key, required this.centered});
-
-  @override
-  Widget build(BuildContext context) {
-    final align =
-    centered ? CrossAxisAlignment.center : CrossAxisAlignment.start;
-    final textAlign = centered ? TextAlign.center : TextAlign.start;
-    final wrapAlign = centered ? WrapAlignment.center : WrapAlignment.start;
-
-    return Column(
-      crossAxisAlignment: align,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          ProfileCardPage.nama,
-          textAlign: textAlign,
-          style: const TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w800,
-            color: AppColors.textDark,
-            letterSpacing: -0.3,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          ProfileCardPage.prodi,
-          textAlign: textAlign,
-          style: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: AppColors.primary,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Wrap(
-          alignment: wrapAlign,
-          spacing: 16,
-          runSpacing: 6,
-          children: const [
-            InfoText(icon: Icons.badge_outlined, text: 'NIM ${ProfileCardPage.nim}'),
-            InfoText(
-                icon: Icons.location_on_outlined, text: ProfileCardPage.asal),
-          ],
-        ),
-        const SizedBox(height: 18),
-        Text(
-          ProfileCardPage.deskripsi,
-          textAlign: textAlign,
-          style: const TextStyle(
-            fontSize: 14,
-            height: 1.6,
-            color: AppColors.textGrey,
-          ),
-        ),
-        const SizedBox(height: 20),
-
-        // Organisasi
-        Wrap(
-          alignment: wrapAlign,
-          spacing: 10,
-          runSpacing: 10,
-          children: const [
-            OrgTile(
-              icon: Icons.account_balance_rounded,
-              title: 'Anggota DPM',
-              color: AppColors.primary,
-              softColor: AppColors.primarySoft,
-            ),
-            OrgTile(
-              icon: Icons.groups_rounded,
-              title: 'Aktif di UKM PN',
-              color: AppColors.sage,
-              softColor: AppColors.sageSoft,
-            ),
-          ],
-        ),
-        const SizedBox(height: 20),
-
-        // 3 ikon kontak memakai Row
-        const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ContactIcon(icon: Icons.email_rounded),
-            SizedBox(width: 12),
-            ContactIcon(icon: Icons.phone_rounded),
-            SizedBox(width: 12),
-            ContactIcon(icon: Icons.code_rounded),
-          ],
-        ),
-        const SizedBox(height: 20),
-
-        // Skill memakai Wrap + Chip (otomatis pindah baris)
-        Wrap(
-          alignment: wrapAlign,
-          spacing: 8,
-          runSpacing: 8,
-          children: ProfileCardPage.skills
-              .map(
-                (s) => Chip(
-              label: Text(s),
-              backgroundColor: AppColors.primarySoft,
-              side: BorderSide.none,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20)),
-              labelStyle: const TextStyle(
-                color: AppColors.primary,
-                fontWeight: FontWeight.w600,
-                fontSize: 12,
-              ),
-            ),
-          )
-              .toList(),
-        ),
-      ],
-    );
-  }
-}
-
-class InfoText extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  const InfoText({super.key, required this.icon, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 16, color: AppColors.textGrey),
-        const SizedBox(width: 5),
-        Text(text,
-            style: const TextStyle(color: AppColors.textGrey, fontSize: 13)),
-      ],
-    );
-  }
-}
-
-class OrgTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final Color color;
-  final Color softColor;
-  const OrgTile({
-    super.key,
-    required this.icon,
-    required this.title,
-    required this.color,
-    required this.softColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: softColor,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 20, color: color),
-          const SizedBox(width: 8),
-          Text(
-            title,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w700,
-              fontSize: 13,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class ContactIcon extends StatelessWidget {
-  final IconData icon;
-  const ContactIcon({super.key, required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 46,
-      height: 46,
-      decoration: BoxDecoration(
-        color: AppColors.primarySoft,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Icon(icon, color: AppColors.primary, size: 22),
     );
   }
 }
